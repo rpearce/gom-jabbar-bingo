@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+set -o errexit
+set -o errtrace
+set -o nounset
+set -eou pipefail
+
+function main {
+  local hash_bingo
+  local hash_styles
+
+  hash_bingo=$(md5sum ./bingo.js | awk '{print $1}')
+  hash_styles=$(md5sum ./styles.css | awk '{print $1}')
+
+  rm -f bingo.*.js styles.*.css
+
+  cat bingo.js > "bingo.${hash_bingo}.js"
+  cat styles.css > "styles.${hash_styles}.css"
+
+  while IFS='' read -r line; do
+    if [[ "${line}" =~ styles.*\.css ]]; then
+      # shellcheck disable=SC2001
+      echo "${line}" | sed -E 's/styles\..*\.css/styles.'"${hash_styles}"'.css/g'
+    elif [[ "${line}" =~ bingo.*\.js ]]; then
+      # shellcheck disable=SC2001
+      echo "${line}" | sed -E 's/bingo\..*\.js/bingo.'"${hash_bingo}"'.js/g'
+    else
+      echo "$line"
+    fi
+
+  done < ./index.html > /tmp/gom-jabbar-index.html
+  mv /tmp/gom-jabbar-index.html ./index.html
+}
+
+main
