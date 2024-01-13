@@ -5,31 +5,75 @@ set -o errtrace
 set -o nounset
 set -eou pipefail
 
+BUILD_DIR="./dist"
+
+function get_asset_md5sums {
+  find . \
+    -type f \
+    ! -path "./.git/*" \
+    ! -path "${BUILD_DIR}/*" \
+    \( -iname "*.css" -o \
+       -iname "*.js" -o \
+       -iname "*.avif" -o \
+       -iname "*.bmp" -o \
+       -iname "*.gif" -o \
+       -iname "*.heif" -o \
+       -iname "*.jpeg" -o \
+       -iname "*.jpg" -o \
+       -iname "*.png" -o \
+       -iname "*.svg" -o \
+       -iname "*.webp" \
+    \) \
+    -exec md5sum '{}' +
+}
+
+function get_html_files {
+  find . \
+    -type f \
+    ! -path "./.git/*" \
+    ! -path "${BUILD_DIR}/*" \
+    -iname "*.html"
+}
+
 function main {
-  local hash_bingo
-  local hash_styles
+  # Recreate build dir
+  rm -rf "${BUILD_DIR}" && mkdir -p "${BUILD_DIR}"
 
-  hash_bingo=$(md5sum ./bingo.js | awk '{print $1}')
-  hash_styles=$(md5sum ./styles.css | awk '{print $1}')
+  assets_array=()
 
-  rm -f bingo.*.js styles.*.css
+  # Get all asset MD5 checksums, put them into an assets array for later use,
+  # and write each file to a new file with the checksum in the name.
+  while read -r sum file; do
+    file_name="${file%.*}"
+    file_ext="${file##*.}"
+    file_with_sum="${file_name}.${sum}.${file_ext}"
 
-  cat bingo.js > "bingo.${hash_bingo}.js"
-  cat styles.css > "styles.${hash_styles}.css"
+    assets_array+=( "${file}=${file_with_sum}" )
 
-  while IFS='' read -r line; do
-    if [[ "${line}" =~ styles.*\.css ]]; then
-      # shellcheck disable=SC2001
-      echo "${line}" | sed -E 's/styles\..*\.css/styles.'"${hash_styles}"'.css/g'
-    elif [[ "${line}" =~ bingo.*\.js ]]; then
-      # shellcheck disable=SC2001
-      echo "${line}" | sed -E 's/bingo\..*\.js/bingo.'"${hash_bingo}"'.js/g'
-    else
-      echo "$line"
-    fi
+    cat "${file}" > "${BUILD_DIR}/${file_with_sum}"
+  done < <(get_asset_md5sums)
 
-  done < ./index.html > /tmp/gom-jabbar-index.html
-  mv /tmp/gom-jabbar-index.html ./index.html
+  # Get each HTML file, go through each line of each HTML file, and
+  # when you come across a line that has a value in the assets array,
+  # update that line, then output the updated HTML file lines to a new
+  # HTML file in the build dir.
+  while read -r file; do
+    while IFS='' read -r line; do
+      line_updated="${line}"
+
+      for val in "${assets_array[@]}"; do
+        file_name_original=$(echo "${val}" | cut -d "=" -f 1)
+        file_name_summed=$(echo "${val}" | cut -d "=" -f 2)
+
+        if [[ "${line}" =~ ${file_name_original} ]]; then
+          line_updated=$(echo "${line}" | sed -E 's@'"${file_name_original}"'@'"${file_name_summed}"'@g')
+          break
+        fi
+      done
+
+      echo "${line_updated}"
+    done < "${file}" > "${BUILD_DIR}/${file}"
+  done < <(get_html_files)
 }
 
 main
