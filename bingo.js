@@ -1,4 +1,4 @@
-(() => {
+;(() => {
   // ===========================================================================
   // Constants
 
@@ -61,7 +61,7 @@
 
   function takeN(n) {
     return function (xs) {
-      return xs.slice(0, n - 1);
+      return xs.slice(0, n);
     }
   }
 
